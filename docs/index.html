@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NanoBanana2 Image Generator</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --surface2: #2a2a2a;
+  --border: #3a3a3a;
+  --accent: #FFD600;
+  --accent-dim: #bfa000;
+  --text: #e8e8e8;
+  --text-dim: #999;
+  --error: #ef5350;
+  --success: #66bb6a;
+  --radius: 10px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+header h1 { font-size: 20px; font-weight: 700; color: var(--accent); }
+header span { font-size: 13px; color: var(--text-dim); }
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+section h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.api-key-row { display: flex; gap: 8px; }
+.api-key-row input { flex: 1; }
+.api-key-row button {
+  width: 44px; flex-shrink: 0;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); cursor: pointer; font-size: 16px;
+}
+
+input[type="text"], input[type="password"], textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); padding: 10px 12px;
+  font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.2s;
+}
+input:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 120px; }
+
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 32px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  color: var(--text-dim); font-size: 14px;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent); background: rgba(255, 214, 0, 0.04);
+}
+.drop-zone input { display: none; }
+
+.ref-previews { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ref-thumb {
+  position: relative; width: 72px; height: 72px;
+  border-radius: 6px; overflow: hidden; border: 1px solid var(--border);
+}
+.ref-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ref-thumb button {
+  position: absolute; top: 2px; right: 2px; width: 20px; height: 20px;
+  border-radius: 50%; border: none; background: rgba(0,0,0,0.7);
+  color: #fff; font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+}
+
+.options-row { display: flex; gap: 24px; flex-wrap: wrap; }
+label.option {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; cursor: pointer; user-select: none;
+}
+label.option input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+.generate-btn {
+  width: 100%; padding: 14px; background: var(--accent); color: #000;
+  border: none; border-radius: var(--radius); font-size: 16px;
+  font-weight: 700; cursor: pointer; transition: background 0.2s; letter-spacing: 0.5px;
+}
+.generate-btn:hover { background: #ffe033; }
+.generate-btn:disabled { background: var(--surface2); color: var(--text-dim); cursor: not-allowed; }
+
+.status-bar {
+  text-align: center; padding: 12px; font-size: 14px;
+  color: var(--accent); display: none;
+}
+.status-bar.visible { display: block; }
+.status-bar .spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--accent-dim); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+  vertical-align: middle; margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.results-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
+}
+.results-header h2 { margin-bottom: 0; }
+
+.dl-all-btn {
+  padding: 8px 16px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--accent); font-size: 13px;
+  font-weight: 600; cursor: pointer; transition: background 0.2s;
+}
+.dl-all-btn:hover { background: var(--border); }
+
+.results-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;
+}
+
+.result-card {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.result-card .image-wrap {
+  position: relative;
+  background: repeating-conic-gradient(#333 0% 25%, #222 0% 50%) 50% / 16px 16px;
+  display: flex; align-items: center; justify-content: center; min-height: 200px;
+}
+.result-card img { max-width: 100%; display: block; }
+.result-card .card-info { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.result-card .instruction-text { font-size: 13px; color: var(--text); }
+.result-card .prompt-toggle {
+  font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none;
+}
+.result-card .prompt-toggle:hover { color: var(--accent); }
+.result-card .prompt-text {
+  font-size: 11px; color: var(--text-dim); display: none;
+  margin-top: 4px; word-break: break-word;
+}
+.result-card .prompt-text.open { display: block; }
+.result-card .card-actions { display: flex; gap: 8px; margin-top: 4px; }
+.result-card .card-actions button {
+  flex: 1; padding: 7px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface2); color: var(--text); font-size: 12px;
+  cursor: pointer; transition: background 0.2s;
+}
+.result-card .card-actions button:hover { background: var(--border); }
+
+.result-card.error-card .image-wrap { background: var(--surface2); padding: 24px; min-height: auto; }
+.error-msg { color: var(--error); font-size: 13px; text-align: center; }
+
+@media (max-width: 600px) {
+  main { padding: 12px 8px; }
+  .results-grid { grid-template-columns: 1fr; }
+  .options-row { flex-direction: column; gap: 12px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NanoBanana2</h1>
+  <span>Batch Image Generator (GitHub Pages Edition)</span>
+</header>
+
+<main>
+  <section>
+    <h2>API Key</h2>
+    <div class="api-key-row">
+      <input type="password" id="apiKey" placeholder="Gemini API Key">
+      <button type="button" id="toggleKey" title="Show/Hide">&#128065;</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>参考画像 (1-10枚)</h2>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="refInput" multiple accept="image/*">
+      ここに画像をドロップ または クリックして選択
+    </div>
+    <div class="ref-previews" id="refPreviews"></div>
+  </section>
+
+  <section>
+    <h2>生成指示</h2>
+    <textarea id="instructions" placeholder="・手を上げたポーズ、背景は金色&#10;・歌ってる、服はドレス&#10;・「おはよう」笑顔で手を振っている"></textarea>
+  </section>
+
+  <section>
+    <h2>オプション</h2>
+    <div class="options-row">
+      <label class="option">
+        <input type="checkbox" id="whiteBg" checked>
+        背景白
+      </label>
+      <label class="option">
+        <input type="checkbox" id="lineStamp">
+        LINE スタンプ (1:1)
+      </label>
+    </div>
+  </section>
+
+  <button class="generate-btn" id="generateBtn">生成する</button>
+
+  <div class="status-bar" id="statusBar">
+    <span class="spinner"></span>
+    <span id="statusText"></span>
+  </div>
+
+  <section id="resultsSection" style="display:none;">
+    <div class="results-header">
+      <h2>生成結果</h2>
+      <button class="dl-all-btn" id="dlAllBtn">一括ダウンロード (ZIP)</button>
+    </div>
+    <div class="results-grid" id="resultsGrid"></div>
+  </section>
+</main>
+
+<script>
+/* ========== CONFIG ========== */
+const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
+const TEXT_MODEL  = "gemini-2.5-flash";
+const API_BASE    = "https://generativelanguage.googleapis.com/v1beta/models";
+const MAX_RETRIES = 5;
+const DELAY_BETWEEN = 10000; // ms between image generations
+const VALID_RATIOS = ["1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9"];
+
+/* ========== STATE ========== */
+const refFiles = [];
+const refBase64 = [];   // {mimeType, data} for each ref image
+const generatedImages = [];
+
+/* ========== DOM ========== */
+const $ = (id) => document.getElementById(id);
+const apiKeyInput   = $("apiKey");
+const toggleKeyBtn  = $("toggleKey");
+const dropZone      = $("dropZone");
+const refInput      = $("refInput");
+const refPreviews   = $("refPreviews");
+const instructionsEl = $("instructions");
+const whiteBg       = $("whiteBg");
+const lineStamp     = $("lineStamp");
+const generateBtn   = $("generateBtn");
+const statusBar     = $("statusBar");
+const statusText    = $("statusText");
+const resultsSection = $("resultsSection");
+const resultsGrid   = $("resultsGrid");
+const dlAllBtn      = $("dlAllBtn");
+
+/* ========== HELPERS ========== */
+function setStatus(msg) { statusBar.classList.add("visible"); statusText.textContent = msg; }
+function hideStatus()   { statusBar.classList.remove("visible"); }
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result.split(",")[1];
+      resolve({ mimeType: file.type || "image/jpeg", data: b64 });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function parseRetryDelay(msg) {
+  const m = msg.match(/retry in ([\d.]+)/);
+  return m ? Math.min(parseFloat(m[1]) + 3, 90) * 1000 : 30000;
+}
+
+function friendlyError(msg) {
+  if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("429"))
+    return "APIレート制限です。少し時間を置いて再試行してください。";
+  if (msg.includes("PERMISSION_DENIED") || msg.includes("403"))
+    return "API Keyが無効、または権限がありません。";
+  if (msg.includes("NOT_FOUND") || msg.includes("404"))
+    return "モデルが見つかりません。";
+  if (msg.includes("INVALID_ARGUMENT") || msg.includes("400"))
+    return "リクエストが不正です: " + msg.slice(0, 150);
+  return "生成エラー: " + msg.slice(0, 200);
+}
+
+/* ========== GEMINI API ========== */
+async function callGemini(model, parts, genConfig, retryNum = 0) {
+  const key = apiKeyInput.value.trim();
+  const url = `${API_BASE}/${model}:generateContent?key=${key}`;
+
+  const body = {
+    contents: [{ parts }],
+  };
+  if (genConfig) body.generationConfig = genConfig;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    const isRateLimit = errText.includes("429") || errText.includes("RESOURCE_EXHAUSTED");
+    if (isRateLimit && retryNum < MAX_RETRIES - 1) {
+      const wait = parseRetryDelay(errText);
+      setStatus(`レート制限 — リトライ中 (${retryNum + 1}/${MAX_RETRIES})、${Math.round(wait/1000)}秒待機...`);
+      await sleep(wait);
+      return callGemini(model, parts, genConfig, retryNum + 1);
+    }
+    throw new Error(friendlyError(errText));
+  }
+
+  return await res.json();
+}
+
+async function analyzeReferences() {
+  if (refBase64.length === 0) return "";
+
+  const parts = [
+    { text: "Analyze these character reference images in detail. Describe:\n1. Art style\n2. Hair: color, length, style\n3. Eyes: color, shape\n4. Face: shape, features\n5. Body type\n6. Default clothing\n7. Accessories or distinctive features\n\nProvide a concise English description for character consistency." },
+  ];
+  for (const img of refBase64) {
+    parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+  }
+
+  const res = await callGemini(TEXT_MODEL, parts);
+  return res?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+function buildPromptRequest(instruction, charDesc, isWhiteBg, isLineStamp) {
+  const quotedTexts = [...instruction.matchAll(/「(.+?)」/g)].map(m => m[1]);
+
+  let textRule = "";
+  if (quotedTexts.length > 0) {
+    textRule = `\n- Render the following text prominently and legibly in the image: ${quotedTexts.map(t => `"${t}"`).join(", ")}`;
+  }
+
+  let bgRule = "";
+  if (isWhiteBg) {
+    bgRule = "\n- 背景は真っ白(pure white #FFFFFF)で、キャラクターのみ描画。背景に何も描かない";
+  }
+
+  let squareRule = "";
+  if (isLineStamp) {
+    squareRule = "\n- Compose for a square (1:1) format";
+  }
+
+  const ratioInstruction = isLineStamp
+    ? "- MUST be 1:1"
+    : "- Choose based on pose and composition (e.g. full-body standing -> 2:3, action/horizontal -> 3:2, bust-up -> 4:5, wide scene -> 16:9, tall panel -> 9:16)";
+
+  const system = `You are an expert image-generation prompt engineer.
+Convert the Japanese instruction below into an optimized English prompt for high-quality anime/manga-style image generation.
+
+RULES:
+- Create a detailed, descriptive English prompt
+- ALWAYS include: "detailed and anatomically correct hands with five fingers"
+- If the instruction specifies appearance (clothing, hair, etc.) that differs from the reference, prioritize the instruction
+- Otherwise maintain the character appearance from the reference description
+- Specify pose, expression, camera angle, lighting, and composition${textRule}${bgRule}${squareRule}
+
+CHARACTER REFERENCE:
+${charDesc || "No reference provided — use generic anime/manga style"}
+
+ASPECT RATIO — pick the best from [${VALID_RATIOS.join(", ")}]
+${ratioInstruction}
+
+Return ONLY valid JSON (no markdown fences):
+{"prompt": "...", "aspect_ratio": "X:Y"}`;
+
+  return system + "\n\nJapanese instruction: " + instruction;
+}
+
+async function optimizePrompt(instruction, charDesc, isWhiteBg, isLineStamp) {
+  const prompt = buildPromptRequest(instruction, charDesc, isWhiteBg, isLineStamp);
+  const res = await callGemini(TEXT_MODEL, [{ text: prompt }]);
+
+  let raw = res?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  if (!raw) return { prompt: instruction, aspect_ratio: isLineStamp ? "1:1" : "2:3" };
+
+  raw = raw.trim();
+  if (raw.startsWith("```")) {
+    raw = raw.split("\n").slice(1).join("\n").replace(/```\s*$/, "").trim();
+  }
+
+  try {
+    const result = JSON.parse(raw);
+    if (!VALID_RATIOS.includes(result.aspect_ratio)) {
+      result.aspect_ratio = isLineStamp ? "1:1" : "2:3";
+    }
+    return result;
+  } catch {
+    return { prompt: raw, aspect_ratio: isLineStamp ? "1:1" : "2:3" };
+  }
+}
+
+async function generateImage(prompt, aspectRatio) {
+  const parts = [{ text: prompt }];
+  for (const img of refBase64) {
+    parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+  }
+
+  const res = await callGemini(IMAGE_MODEL, parts, {
+    responseModalities: ["IMAGE", "TEXT"],
+    imageConfig: { aspectRatio: aspectRatio },
+  });
+
+  const candidates = res?.candidates || [];
+  for (const c of candidates) {
+    for (const p of (c?.content?.parts || [])) {
+      if (p?.inlineData?.data) {
+        return p.inlineData.data; // base64
+      }
+    }
+  }
+  throw new Error("画像が生成されませんでした。プロンプトが拒否された可能性があります。");
+}
+
+/* ========== API KEY ========== */
+toggleKeyBtn.addEventListener("click", () => {
+  apiKeyInput.type = apiKeyInput.type === "password" ? "text" : "password";
+});
+
+/* ========== REFERENCE IMAGES ========== */
+dropZone.addEventListener("click", () => refInput.click());
+dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+dropZone.addEventListener("drop", (e) => { e.preventDefault(); dropZone.classList.remove("drag-over"); addFiles(e.dataTransfer.files); });
+refInput.addEventListener("change", () => { addFiles(refInput.files); refInput.value = ""; });
+
+function addFiles(fileList) {
+  for (const f of fileList) {
+    if (!f.type.startsWith("image/")) continue;
+    if (refFiles.length >= 10) break;
+    refFiles.push(f);
+  }
+  renderRefPreviews();
+}
+
+function renderRefPreviews() {
+  refPreviews.innerHTML = "";
+  refFiles.forEach((f, i) => {
+    const div = document.createElement("div");
+    div.className = "ref-thumb";
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(f);
+    const btn = document.createElement("button");
+    btn.textContent = "\u00d7";
+    btn.addEventListener("click", () => { refFiles.splice(i, 1); renderRefPreviews(); });
+    div.appendChild(img);
+    div.appendChild(btn);
+    refPreviews.appendChild(div);
+  });
+}
+
+lineStamp.addEventListener("change", () => { if (lineStamp.checked) whiteBg.checked = true; });
+
+/* ========== GENERATE ========== */
+generateBtn.addEventListener("click", generate);
+
+async function generate() {
+  const key = apiKeyInput.value.trim();
+  if (!key) { alert("API Keyを入力してください"); return; }
+
+  const text = instructionsEl.value.trim();
+  if (!text) { alert("生成指示を入力してください"); return; }
+
+  generateBtn.disabled = true;
+  resultsGrid.innerHTML = "";
+  generatedImages.length = 0;
+  resultsSection.style.display = "none";
+
+  try {
+    // Convert ref images to base64
+    setStatus("参考画像を読み込み中...");
+    refBase64.length = 0;
+    for (const f of refFiles) {
+      refBase64.push(await fileToBase64(f));
+    }
+
+    // Analyze references
+    let charDesc = "";
+    if (refBase64.length > 0) {
+      setStatus("参考画像を分析中...");
+      charDesc = await analyzeReferences();
+      setStatus("参考画像の分析完了");
+    }
+
+    // Parse instructions
+    const lines = text.split("\u30fb").map(s => s.trim()).filter(Boolean);
+    if (lines.length === 0) { alert("指示が入力されていません"); return; }
+
+    const isWhiteBg = whiteBg.checked;
+    const isLineStamp = lineStamp.checked;
+
+    for (let i = 0; i < lines.length; i++) {
+      const instruction = lines[i];
+
+      setStatus(`プロンプト最適化中... (${i + 1}/${lines.length})`);
+      let optimized;
+      try {
+        optimized = await optimizePrompt(instruction, charDesc, isWhiteBg, isLineStamp);
+      } catch (e) {
+        addErrorCard(i, instruction, e.message);
+        continue;
+      }
+
+      setStatus(`画像生成中... (${i + 1}/${lines.length}) ${instruction}`);
+      try {
+        const imageB64 = await generateImage(optimized.prompt, optimized.aspect_ratio);
+        resultsSection.style.display = "";
+        addResultCard(i, instruction, optimized.prompt, optimized.aspect_ratio, imageB64);
+      } catch (e) {
+        resultsSection.style.display = "";
+        addErrorCard(i, instruction, e.message);
+      }
+
+      // Cooldown between images
+      if (i < lines.length - 1) {
+        setStatus(`次の生成まで${DELAY_BETWEEN / 1000}秒待機中...`);
+        await sleep(DELAY_BETWEEN);
+      }
+    }
+  } catch (e) {
+    alert("エラー: " + e.message);
+  } finally {
+    generateBtn.disabled = false;
+    hideStatus();
+  }
+}
+
+/* ========== RESULT CARDS ========== */
+function addResultCard(index, instruction, prompt, aspectRatio, imageB64) {
+  generatedImages.push({ b64: imageB64, instruction, index });
+
+  const card = document.createElement("div");
+  card.className = "result-card";
+  card.innerHTML = `
+    <div class="image-wrap">
+      <img src="data:image/png;base64,${imageB64}" alt="generated">
+    </div>
+    <div class="card-info">
+      <div class="instruction-text">${esc(instruction)}</div>
+      <div class="prompt-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+        Prompt (${aspectRatio}) &#9660;
+      </div>
+      <div class="prompt-text">${esc(prompt)}</div>
+      <div class="card-actions">
+        <button onclick="downloadSingle(${generatedImages.length - 1})">ダウンロード</button>
+      </div>
+    </div>`;
+  resultsGrid.appendChild(card);
+}
+
+function addErrorCard(index, instruction, message) {
+  resultsSection.style.display = "";
+  const card = document.createElement("div");
+  card.className = "result-card error-card";
+  card.innerHTML = `
+    <div class="image-wrap">
+      <div class="error-msg">生成失敗: ${esc(message)}</div>
+    </div>
+    <div class="card-info">
+      <div class="instruction-text">${esc(instruction)}</div>
+    </div>`;
+  resultsGrid.appendChild(card);
+}
+
+/* ========== DOWNLOADS ========== */
+function downloadSingle(idx) {
+  const item = generatedImages[idx];
+  const a = document.createElement("a");
+  a.href = "data:image/png;base64," + item.b64;
+  a.download = `nanobanana2_${item.index + 1}.png`;
+  a.click();
+}
+
+dlAllBtn.addEventListener("click", async () => {
+  if (!generatedImages.length) return;
+  const zip = new JSZip();
+  generatedImages.forEach((item) => {
+    const binary = atob(item.b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+    zip.file(`nanobanana2_${item.index + 1}.png`, bytes);
+  });
+  const blob = await zip.generateAsync({ type: "blob" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "nanobanana2_batch.zip";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>
+
+</body>
+</html>

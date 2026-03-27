@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NanoBanana2 Image Generator</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --surface2: #2a2a2a;
+  --border: #3a3a3a;
+  --accent: #FFD600;
+  --accent-dim: #bfa000;
+  --text: #e8e8e8;
+  --text-dim: #999;
+  --error: #ef5350;
+  --success: #66bb6a;
+  --radius: 10px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+/* --- Header --- */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+}
+header span {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* --- Main layout --- */
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* --- Sections --- */
+section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+section h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* --- API Key --- */
+.api-key-row {
+  display: flex;
+  gap: 8px;
+}
+.api-key-row input {
+  flex: 1;
+}
+.api-key-row button {
+  width: 44px;
+  flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+/* --- Inputs --- */
+input[type="text"], input[type="password"], textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input:focus, textarea:focus {
+  border-color: var(--accent);
+}
+textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* --- Drop zone --- */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(255, 214, 0, 0.04);
+}
+.drop-zone input { display: none; }
+
+.ref-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ref-thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.ref-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ref-thumb button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* --- Options --- */
+.options-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+label.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+label.option input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+/* --- Generate button --- */
+.generate-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+  letter-spacing: 0.5px;
+}
+.generate-btn:hover { background: #ffe033; }
+.generate-btn:disabled {
+  background: var(--surface2);
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
+/* --- Status --- */
+.status-bar {
+  text-align: center;
+  padding: 12px;
+  font-size: 14px;
+  color: var(--accent);
+  display: none;
+}
+.status-bar.visible { display: block; }
+.status-bar .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent-dim);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Results --- */
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.results-header h2 { margin-bottom: 0; }
+
+.dl-all-btn {
+  padding: 8px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.dl-all-btn:hover { background: var(--border); }
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.result-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.result-card .image-wrap {
+  position: relative;
+  background: repeating-conic-gradient(#333 0% 25%, #222 0% 50%) 50% / 16px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+.result-card img {
+  max-width: 100%;
+  display: block;
+}
+.result-card .card-info {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.result-card .instruction-text {
+  font-size: 13px;
+  color: var(--text);
+}
+.result-card .prompt-toggle {
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.result-card .prompt-toggle:hover { color: var(--accent); }
+.result-card .prompt-text {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: none;
+  margin-top: 4px;
+  word-break: break-word;
+}
+.result-card .prompt-text.open { display: block; }
+.result-card .card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.result-card .card-actions button {
+  flex: 1;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.result-card .card-actions button:hover { background: var(--border); }
+
+.result-card.error-card .image-wrap {
+  background: var(--surface2);
+  padding: 24px;
+  min-height: auto;
+}
+.error-msg {
+  color: var(--error);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+  main { padding: 12px 8px; }
+  .results-grid { grid-template-columns: 1fr; }
+  .options-row { flex-direction: column; gap: 12px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NanoBanana2</h1>
+  <span>Batch Image Generator</span>
+</header>
+
+<main>
+  <!-- API Key -->
+  <section>
+    <h2>API Key</h2>
+    <div class="api-key-row">
+      <input type="password" id="apiKey" placeholder="Gemini API Key">
+      <button type="button" id="toggleKey" title="Show/Hide">&#128065;</button>
+    </div>
+  </section>
+
+  <!-- Reference Images -->
+  <section>
+    <h2>参考画像 (1-10枚)</h2>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="refInput" multiple accept="image/*">
+      ここに画像をドロップ または クリックして選択
+    </div>
+    <div class="ref-previews" id="refPreviews"></div>
+  </section>
+
+  <!-- Instructions -->
+  <section>
+    <h2>生成指示</h2>
+    <textarea id="instructions" placeholder="・手を上げたポーズ、背景は金色&#10;・歌ってる、服はドレス&#10;・「おはよう」笑顔で手を振っている"></textarea>
+  </section>
+
+  <!-- Options -->
+  <section>
+    <h2>オプション</h2>
+    <div class="options-row">
+      <label class="option">
+        <input type="checkbox" id="transparentBg" checked>
+        背景白
+      </label>
+      <label class="option">
+        <input type="checkbox" id="lineStamp">
+        LINE スタンプ (1:1)
+      </label>
+    </div>
+  </section>
+
+  <!-- Generate -->
+  <button class="generate-btn" id="generateBtn">生成する</button>
+
+  <!-- Status -->
+  <div class="status-bar" id="statusBar">
+    <span class="spinner"></span>
+    <span id="statusText"></span>
+  </div>
+
+  <!-- Results -->
+  <section id="resultsSection" style="display:none;">
+    <div class="results-header">
+      <h2>生成結果</h2>
+      <button class="dl-all-btn" id="dlAllBtn">一括ダウンロード (ZIP)</button>
+    </div>
+    <div class="results-grid" id="resultsGrid"></div>
+  </section>
+</main>
+
+<script>
+/* ---- State ---- */
+const refFiles = [];
+const generatedImages = [];
+
+/* ---- DOM ---- */
+const $ = (id) => document.getElementById(id);
+
+const apiKeyInput   = $("apiKey");
+const toggleKeyBtn  = $("toggleKey");
+const dropZone      = $("dropZone");
+const refInput      = $("refInput");
+const refPreviews   = $("refPreviews");
+const instructions  = $("instructions");
+const transparentBg = $("transparentBg");
+const lineStamp     = $("lineStamp");
+const generateBtn   = $("generateBtn");
+const statusBar     = $("statusBar");
+const statusText    = $("statusText");
+const resultsSection = $("resultsSection");
+const resultsGrid   = $("resultsGrid");
+const dlAllBtn      = $("dlAllBtn");
+
+/* ---- API Key toggle ---- */
+toggleKeyBtn.addEventListener("click", () => {
+  const t = apiKeyInput.type === "password" ? "text" : "password";
+  apiKeyInput.type = t;
+});
+
+/* ---- Reference images ---- */
+dropZone.addEventListener("click", () => refInput.click());
+
+dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropZone.classList.add("drag-over");
+});
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropZone.classList.remove("drag-over");
+  addFiles(e.dataTransfer.files);
+});
+refInput.addEventListener("change", () => {
+  addFiles(refInput.files);
+  refInput.value = "";
+});
+
+function addFiles(fileList) {
+  for (const f of fileList) {
+    if (!f.type.startsWith("image/")) continue;
+    if (refFiles.length >= 10) break;
+    refFiles.push(f);
+  }
+  renderRefPreviews();
+}
+
+function renderRefPreviews() {
+  refPreviews.innerHTML = "";
+  refFiles.forEach((f, i) => {
+    const div = document.createElement("div");
+    div.className = "ref-thumb";
+
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(f);
+
+    const btn = document.createElement("button");
+    btn.textContent = "\u00d7";
+    btn.addEventListener("click", () => {
+      refFiles.splice(i, 1);
+      renderRefPreviews();
+    });
+
+    div.appendChild(img);
+    div.appendChild(btn);
+    refPreviews.appendChild(div);
+  });
+}
+
+/* ---- LINE stamp → force transparent ---- */
+lineStamp.addEventListener("change", () => {
+  if (lineStamp.checked) transparentBg.checked = true;
+});
+
+/* ---- Generate ---- */
+generateBtn.addEventListener("click", generate);
+
+async function generate() {
+  const key = apiKeyInput.value.trim();
+  if (!key) { alert("API Keyを入力してください"); return; }
+
+  const text = instructions.value.trim();
+  if (!text) { alert("生成指示を入力してください"); return; }
+
+  generateBtn.disabled = true;
+  resultsGrid.innerHTML = "";
+  generatedImages.length = 0;
+  resultsSection.style.display = "none";
+  setStatus("準備中...");
+
+  const fd = new FormData();
+  fd.append("api_key", key);
+  fd.append("instructions", text);
+  fd.append("transparent_bg", transparentBg.checked.toString());
+  fd.append("line_stamp_mode", lineStamp.checked.toString());
+  refFiles.forEach((f) => fd.append("reference_images", f));
+
+  try {
+    const res = await fetch("/api/generate", { method: "POST", body: fd });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const lines = buf.split("\n");
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const data = JSON.parse(line);
+        handleEvent(data);
+      }
+    }
+    if (buf.trim()) handleEvent(JSON.parse(buf));
+  } catch (e) {
+    alert("エラー: " + e.message);
+  } finally {
+    generateBtn.disabled = false;
+    hideStatus();
+  }
+}
+
+function handleEvent(data) {
+  switch (data.type) {
+    case "status":
+      setStatus(data.message);
+      break;
+    case "progress":
+      setStatus(`生成中... (${data.current}/${data.total}) ${data.instruction}`);
+      break;
+    case "result":
+      resultsSection.style.display = "";
+      addResultCard(data);
+      break;
+    case "error":
+      if (data.index !== undefined) {
+        resultsSection.style.display = "";
+        addErrorCard(data);
+      } else {
+        alert(data.message);
+      }
+      break;
+    case "done":
+      hideStatus();
+      break;
+  }
+}
+
+function addResultCard(data) {
+  generatedImages.push({
+    b64: data.image,
+    instruction: data.instruction,
+    index: data.index,
+  });
+
+  const card = document.createElement("div");
+  card.className = "result-card";
+  card.innerHTML = `
+    <div class="image-wrap">
+      <img src="data:image/png;base64,${data.image}" alt="generated">
+    </div>
+    <div class="card-info">
+      <div class="instruction-text">${esc(data.instruction)}</div>
+      <div class="prompt-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+        Prompt (${data.aspect_ratio}) &#9660;
+      </div>
+      <div class="prompt-text">${esc(data.prompt)}</div>
+      <div class="card-actions">
+        <button onclick="downloadSingle(${generatedImages.length - 1})">ダウンロード</button>
+      </div>
+    </div>`;
+  resultsGrid.appendChild(card);
+}
+
+function addErrorCard(data) {
+  const card = document.createElement("div");
+  card.className = "result-card error-card";
+  card.innerHTML = `
+    <div class="image-wrap">
+      <div class="error-msg">生成失敗: ${esc(data.message)}</div>
+    </div>
+    <div class="card-info">
+      <div class="instruction-text">${esc(data.instruction)}</div>
+    </div>`;
+  resultsGrid.appendChild(card);
+}
+
+/* ---- Downloads ---- */
+function downloadSingle(idx) {
+  const item = generatedImages[idx];
+  const a = document.createElement("a");
+  a.href = "data:image/png;base64," + item.b64;
+  a.download = `nanobanana2_${item.index + 1}.png`;
+  a.click();
+}
+
+dlAllBtn.addEventListener("click", async () => {
+  if (!generatedImages.length) return;
+
+  const zip = new JSZip();
+  generatedImages.forEach((item, i) => {
+    const binary = atob(item.b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+    zip.file(`nanobanana2_${item.index + 1}.png`, bytes);
+  });
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "nanobanana2_batch.zip";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ---- Helpers ---- */
+function setStatus(msg) {
+  statusBar.classList.add("visible");
+  statusText.textContent = msg;
+}
+function hideStatus() {
+  statusBar.classList.remove("visible");
+}
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+
+</body>
+</html>
